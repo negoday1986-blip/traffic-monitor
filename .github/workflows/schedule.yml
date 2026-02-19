@@ -3,7 +3,7 @@ name: Traffic Monitor
 on:
   schedule:
     - cron: '*/15 * * * *'   # Каждые 15 минут
-  workflow_dispatch:  # позволяет запускать вручную
+  workflow_dispatch:
 
 jobs:
   check-traffic:
@@ -26,5 +26,5 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          WARNING_THRESHOLD: ${{ secrets.WARNING_THRESHOLD || '45' }}
+          WARNING_THRESHOLD: ${{ secrets.WARNING_THRESHOLD || '25' }}
           ALWAYS_NOTIFY: ${{ secrets.ALWAYS_NOTIFY || 'false' }}
