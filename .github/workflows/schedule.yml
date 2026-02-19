@@ -1,5 +1,5 @@
 name: Traffic Monitor
-
+# force resync 19.02.2026
 on:
   schedule:
     - cron: '*/15 * * * *'   # Каждые 15 минут
