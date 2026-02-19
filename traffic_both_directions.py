@@ -1,6 +1,6 @@
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 
 # ============================================
@@ -104,11 +104,16 @@ def check_route(route_key, route_data):
     current_time = result['minutes']
     distance = result['distance']
     
-    # Формируем сообщение
+   # Формируем сообщение
     message = f"🚗 <b>{route_data['name']}</b>\n"
     message += f"⏱️ Время в пути: <b>{current_time} мин</b>\n"
     message += f"📏 Расстояние: {distance} км\n"
-    message += f"🕐 {datetime.now().astimezone().strftime('%d.%m.%Y %H:%M')}\n"
+    
+    # Московское время (UTC+3)
+    moscow_tz = timezone(timedelta(hours=3))
+    moscow_time = datetime.now(moscow_tz)
+    message += f"🕐 {moscow_time.strftime('%d.%m.%Y %H:%M')}\n"
+
     
     # Проверяем порог
     is_warning = current_time > WARNING_THRESHOLD
