@@ -17,13 +17,13 @@ ALWAYS_NOTIFY = os.environ.get('ALWAYS_NOTIFY', 'False').lower() == 'true'
 ROUTES = {
     'to_vladimir': {
         'name': 'Лакинск → Владимир',
-        'start': {'name': 'Лакинск', 'lat': 56.0167, 'lon': 39.9500},
-        'end': {'name': 'Владимир', 'lat': 56.1291, 'lon': 40.4469}
+        'start': {'name': 'Лакинск', 'lat': 56.028989, 'lon': 40.006655},
+        'end': {'name': 'Владимир', 'lat': 56.105213, 'lon': 40.296923}
     },
     'to_lakinsk': {
         'name': 'Владимир → Лакинск',
-        'start': {'name': 'Владимир', 'lat': 56.1291, 'lon': 40.4469},
-        'end': {'name': 'Лакинск', 'lat': 56.0167, 'lon': 39.9500}
+        'start': {'name': 'Владимир', 'lat': 56.105213, 'lon': 40.296923},
+        'end': {'name': 'Лакинск', 'lat': 56.028989, 'lon': 40.006655}
     }
 }
 
