@@ -108,7 +108,7 @@ def check_route(route_key, route_data):
     message = f"🚗 <b>{route_data['name']}</b>\n"
     message += f"⏱️ Время в пути: <b>{current_time} мин</b>\n"
     message += f"📏 Расстояние: {distance} км\n"
-    message += f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+    message += f"🕐 {datetime.now().astimezone().strftime('%d.%m.%Y %H:%M')}\n"
     
     # Проверяем порог
     is_warning = current_time > WARNING_THRESHOLD
