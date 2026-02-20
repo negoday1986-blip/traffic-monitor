@@ -1,9 +1,9 @@
 name: Traffic Monitor
 
 on:
-  workflow_dispatch:  # ЭТО ПОЗВОЛЯЕТ ЗАПУСКАТЬ ИЗВНЕ
-  # schedule:  # МОЖНО ЗАКОММЕНТИРОВАТЬ ИЛИ УДАЛИТЬ
-  #   - cron: '*/15 * * * *'
+  schedule:
+    - cron: '*/30 * * * *'   # КАЖДЫЕ 30 МИНУТ
+  workflow_dispatch:
 
 jobs:
   check-traffic:
@@ -12,6 +12,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 'stable'
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -19,7 +24,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install requests
+          pip install selenium webdriver-manager requests
       
       - name: Run traffic monitor
         run: python traffic_both_directions.py
