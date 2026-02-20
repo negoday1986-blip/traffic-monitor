@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import random
 from datetime import datetime, timedelta, timezone
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -37,11 +38,13 @@ ROUTES = {
 # ============================================
 
 def get_traffic_time(start_coords, end_coords, max_retries=3):
-    """
-    Парсит реальное время в пути с Яндекс.Карт (с учётом пробок!)
-    """
+    # Случайная задержка 10-25 секунд (чтобы не быть слишком предсказуемым)
+    delay = random.randint(10, 25)
+    print(f"   ⏱️ Случайная задержка {delay} сек...")
+    time.sleep(delay)
+    
     options = Options()
-    options.add_argument('--headless')  # Работает без графического интерфейса
+    options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -63,7 +66,7 @@ def get_traffic_time(start_coords, end_coords, max_retries=3):
             # Ждём загрузки карты и появления времени
             wait = WebDriverWait(driver, 20)
             
-            # Пробуем разные возможные селекторы (на случай изменения сайта)
+            # Пробуем разные возможные селекторы
             selectors = [
                 ".travel-time-view__title",
                 ".route-duration",
@@ -89,10 +92,8 @@ def get_traffic_time(start_coords, end_coords, max_retries=3):
             time_text = time_element.text
             print(f"   Текст с временем: {time_text}")
             
-            # Извлекаем минуты из текста (например, "45 мин" или "1 час 20 мин")
+            # Извлекаем минуты из текста
             minutes = 0
-            
-            # Ищем часы и минуты
             hours_match = re.search(r'(\d+)\s*час', time_text)
             minutes_match = re.search(r'(\d+)\s*мин', time_text)
             
@@ -101,7 +102,6 @@ def get_traffic_time(start_coords, end_coords, max_retries=3):
             if minutes_match:
                 minutes += int(minutes_match.group(1))
             
-            # Если не нашли через часы/минуты, ищем просто число
             if minutes == 0:
                 numbers = re.findall(r'\d+', time_text)
                 if numbers:
