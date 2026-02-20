@@ -1,74 +1,136 @@
-import requests
 import os
+import re
+import time
 from datetime import datetime, timedelta, timezone
-import json
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
 
 # ============================================
-# НАСТРОЙКИ БЕРУТСЯ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+# НАСТРОЙКИ (БЕРУТСЯ ИЗ СЕКРЕТОВ GITHUB)
 # ============================================
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-WARNING_THRESHOLD = int(os.environ.get('WARNING_THRESHOLD', 45))  # по умолчанию 45 минут
+WARNING_THRESHOLD = int(os.environ.get('WARNING_THRESHOLD', 25))
 ALWAYS_NOTIFY = os.environ.get('ALWAYS_NOTIFY', 'False').lower() == 'true'
 
 # ============================================
-# КООРДИНАТЫ МАРШРУТОВ
+# КООРДИНАТЫ МАРШРУТОВ (ВАШИ ПОСЛЕДНИЕ)
 # ============================================
 ROUTES = {
     'to_vladimir': {
         'name': 'Лакинск → Владимир',
-        'start': {'name': 'Лакинск', 'lat': 56.028989, 'lon': 40.006655},
-        'end': {'name': 'Владимир', 'lat': 56.105213, 'lon': 40.296923}
+        'start': '56.028989,40.006655',
+        'end': '56.105213,40.296923'
     },
     'to_lakinsk': {
         'name': 'Владимир → Лакинск',
-        'start': {'name': 'Владимир', 'lat': 56.112379, 'lon': 40.326794},
-        'end': {'name': 'Лакинск', 'lat': 56.028989, 'lon': 40.006655}
+        'start': '56.112379,40.326794',
+        'end': '56.028989,40.006655'
     }
 }
 
 # ============================================
-# ОСНОВНОЙ КОД
+# ФУНКЦИЯ ПАРСИНГА ВРЕМЕНИ С ЯНДЕКС.КАРТ
 # ============================================
 
-def get_route_time(start_coords, end_coords):
+def get_traffic_time(start_coords, end_coords, max_retries=3):
     """
-    Получает время в пути через OpenStreetMap (бесплатно)
+    Парсит реальное время в пути с Яндекс.Карт (с учётом пробок!)
     """
-    try:
-        # Формат: долгота,широта (для OSRM)
-        start = f"{start_coords['lon']},{start_coords['lat']}"
-        end = f"{end_coords['lon']},{end_coords['lat']}"
-        
-        url = f"http://router.project-osrm.org/route/v1/driving/{start};{end}"
-        params = {
-            'overview': 'false',
-            'alternatives': 'false',
-            'steps': 'false'
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        data = response.json()
-        
-        if response.status_code == 200 and data['code'] == 'Ok':
-            duration_seconds = data['routes'][0]['duration']
-            duration_minutes = round(duration_seconds / 60)
-            distance_meters = data['routes'][0]['distance']
-            distance_km = round(distance_meters / 1000, 1)
+    options = Options()
+    options.add_argument('--headless')  # Работает без графического интерфейса
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    
+    for attempt in range(max_retries):
+        driver = None
+        try:
+            print(f"   Попытка {attempt+1}...")
+            driver = webdriver.Chrome(options=options)
             
-            return {
-                'success': True,
-                'minutes': duration_minutes,
-                'distance': distance_km
-            }
-        else:
-            return {'success': False, 'error': f'OSRM ошибка: {data.get("code", "unknown")}'}
+            # Формируем URL для маршрута на Яндекс.Картах
+            url = f"https://yandex.ru/maps/?rtext={start_coords}~{end_coords}&rtp=1"
+            print(f"   Загружаю: {url[:70]}...")
             
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
+            driver.get(url)
+            
+            # Ждём загрузки карты и появления времени
+            wait = WebDriverWait(driver, 20)
+            
+            # Пробуем разные возможные селекторы (на случай изменения сайта)
+            selectors = [
+                ".travel-time-view__title",
+                ".route-duration",
+                ".time-value",
+                "[class*='duration']",
+                "[class*='time']"
+            ]
+            
+            time_element = None
+            for selector in selectors:
+                try:
+                    time_element = wait.until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    print(f"   Найден элемент с селектором: {selector}")
+                    break
+                except:
+                    continue
+            
+            if not time_element:
+                raise Exception("Не найден элемент со временем")
+            
+            time_text = time_element.text
+            print(f"   Текст с временем: {time_text}")
+            
+            # Извлекаем минуты из текста (например, "45 мин" или "1 час 20 мин")
+            minutes = 0
+            
+            # Ищем часы и минуты
+            hours_match = re.search(r'(\d+)\s*час', time_text)
+            minutes_match = re.search(r'(\d+)\s*мин', time_text)
+            
+            if hours_match:
+                minutes += int(hours_match.group(1)) * 60
+            if minutes_match:
+                minutes += int(minutes_match.group(1))
+            
+            # Если не нашли через часы/минуты, ищем просто число
+            if minutes == 0:
+                numbers = re.findall(r'\d+', time_text)
+                if numbers:
+                    minutes = int(numbers[0])
+            
+            if minutes > 0:
+                print(f"✅ Получено время: {minutes} мин")
+                return minutes
+            else:
+                raise Exception(f"Не удалось распарсить время из текста: {time_text}")
+                
+        except Exception as e:
+            print(f"   Ошибка в попытке {attempt+1}: {e}")
+            time.sleep(3)
+        finally:
+            if driver:
+                driver.quit()
+    
+    print("❌ Все попытки не удались")
+    return None
+
+# ============================================
+# ФУНКЦИЯ ОТПРАВКИ В TELEGRAM
+# ============================================
 
 def send_telegram(message):
     """Отправляет сообщение в группу Telegram"""
+    import requests
+    
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("❌ Telegram токен или chat_id не настроены")
         return False
@@ -81,7 +143,7 @@ def send_telegram(message):
     }
     
     try:
-        response = requests.get(url, params=params, timeout=5)
+        response = requests.get(url, params=params, timeout=10)
         if response.status_code == 200:
             return True
         else:
@@ -91,51 +153,53 @@ def send_telegram(message):
         print(f"❌ Ошибка отправки в Telegram: {e}")
         return False
 
+# ============================================
+# ФУНКЦИЯ ПРОВЕРКИ ОДНОГО МАРШРУТА
+# ============================================
+
 def check_route(route_key, route_data):
-    """Проверяет один маршрут"""
+    """Проверяет один маршрут и возвращает результат"""
     print(f"\n🔄 Проверка: {route_data['name']}")
     
-    result = get_route_time(route_data['start'], route_data['end'])
+    traffic_time = get_traffic_time(route_data['start'], route_data['end'])
     
-    if not result['success']:
-        print(f"❌ Ошибка: {result.get('error', 'Неизвестная ошибка')}")
+    if traffic_time is None:
+        print(f"❌ Не удалось получить данные для {route_data['name']}")
         return None
     
-    current_time = result['minutes']
-    distance = result['distance']
-    
-   # Формируем сообщение
-    message = f"🚗 <b>{route_data['name']}</b>\n"
-    message += f"⏱️ Время в пути: <b>{current_time} мин</b>\n"
-    message += f"📏 Расстояние: {distance} км\n"
-    
-    # Московское время (UTC+3)
+    # Формируем сообщение
     moscow_tz = timezone(timedelta(hours=3))
     moscow_time = datetime.now(moscow_tz)
+    
+    message = f"🚗 <b>{route_data['name']}</b>\n"
+    message += f"⏱️ Время в пути (с пробками): <b>{traffic_time} мин</b>\n"
     message += f"🕐 {moscow_time.strftime('%d.%m.%Y %H:%M')}\n"
-
+    message += f"🔍 Источник: Яндекс.Карты\n"
     
     # Проверяем порог
-    is_warning = current_time > WARNING_THRESHOLD
+    is_warning = traffic_time > WARNING_THRESHOLD
     if is_warning:
         message += f"\n🔴 <b>ПРОБКА!</b> Превышен порог {WARNING_THRESHOLD} мин!\n"
     
     return {
         'message': message,
         'is_warning': is_warning,
-        'time': current_time
+        'time': traffic_time
     }
 
+# ============================================
+# ГЛАВНАЯ ФУНКЦИЯ
+# ============================================
+
 def main():
-    """Главная функция"""
     print(f"\n{'='*50}")
     print(f"🚀 Запуск проверки {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+    print(f"📊 Режим: ПАРСИНГ Яндекс.Карт (бесплатно, с пробками)")
     print('='*50)
     
     results = []
     any_warning = False
     
-    # Проверяем каждый маршрут
     for route_key, route_data in ROUTES.items():
         result = check_route(route_key, route_data)
         if result:
@@ -143,10 +207,9 @@ def main():
             if result['is_warning']:
                 any_warning = True
     
-    # Отправляем сообщения
+    # Отправляем уведомления
     if ALWAYS_NOTIFY or any_warning:
         print("\n📨 Отправка уведомлений...")
-        
         for result in results:
             if ALWAYS_NOTIFY or result['is_warning']:
                 sent = send_telegram(result['message'])
